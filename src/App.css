@@ -5,6 +5,59 @@
   align-items: start;
 }
 
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem 3rem;
+  text-align: center;
+}
+
+.auth-screen .brand {
+  margin-bottom: 1.25rem;
+}
+
+.auth-screen h1 {
+  margin: 0 0 0.7rem;
+  font-family: "Noto Sans KR", sans-serif;
+  font-size: 1.15rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+
+.auth-lede {
+  margin: 0 auto 1.8rem;
+  max-width: 22rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 300;
+  line-height: 1.65;
+}
+
+.google-login-btn {
+  min-width: 15rem;
+  height: 3.15rem;
+  padding: 0 1.2rem;
+  border: 1px solid #6b5344;
+  border-radius: 12px;
+  background: #6b5344;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.google-login-btn:hover {
+  background: #584335;
+  transform: translateY(-1px);
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -15,6 +68,81 @@
   background: rgba(245, 241, 238, 0.55);
   backdrop-filter: blur(8px);
   overflow-y: auto;
+}
+
+.sidebar-user {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 1.1rem;
+  padding: 0 0.2rem 0.95rem;
+  border-bottom: 1px solid rgba(161, 173, 149, 0.35);
+}
+
+.sidebar-user-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.sidebar-avatar {
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(161, 173, 149, 0.35);
+}
+
+.sidebar-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.sidebar-user-name {
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  word-break: break-word;
+}
+
+.sidebar-logout {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.sidebar-logout:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: #fff;
+  color: var(--ink);
+}
+
+.sidebar-logout:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.google-login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .sidebar-title {

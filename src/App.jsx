@@ -3,9 +3,10 @@ import ReactMarkdown from 'react-markdown'
 import './App.css'
 import { analyzeSaju } from './gemini'
 import { supabase } from './supabase'
+import { useAuth } from './useAuth'
 
 const READING_SELECT =
-  'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, updated_at'
+  'id, user_id, name, birth_date, birth_time, gender, calendar_type, result, created_at, updated_at'
 
 /** 단일 줄바꿈을 마크다운 강제 줄바꿈으로 바꿔 원국·문단이 예쁘게 보이게 함 */
 function formatResultMarkdown(text) {
@@ -34,6 +35,8 @@ function calendarLabel(value) {
 }
 
 function App() {
+  const { user, authLoading, authBusy, authError, signInWithGoogle, signOut } = useAuth()
+
   const [name, setName] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [birthTime, setBirthTime] = useState('')
@@ -44,7 +47,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
-  const [listLoading, setListLoading] = useState(true)
+  const [listLoading, setListLoading] = useState(false)
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -64,13 +67,30 @@ function App() {
 
   const isViewingSaved = Boolean(selectedId)
   const busy = loading || saving || Boolean(deletingId)
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email ||
+    '사용자'
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || ''
 
   useEffect(() => {
-    void loadReadings()
     return () => {
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!user) {
+      setReadings([])
+      setSelectedId(null)
+      setResult('')
+      setListError('')
+      setListLoading(false)
+      return
+    }
+    void loadReadings()
+  }, [user?.id])
 
   useEffect(() => {
     if (!shouldScrollToResultRef.current || !result || !resultRef.current) return
@@ -80,6 +100,7 @@ function App() {
 
   function readingPayload(extra = {}) {
     return {
+      user_id: user.id,
       name: name.trim(),
       birth_date: birthDate,
       birth_time: timeUnknown || !birthTime ? null : birthTime,
@@ -90,10 +111,12 @@ function App() {
   }
 
   async function loadReadings() {
+    if (!user?.id) return
     setListLoading(true)
     const { data, error: fetchError } = await supabase
       .from('saju_readings')
       .select(READING_SELECT)
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
     if (fetchError) {
@@ -198,6 +221,11 @@ function App() {
   async function handleAnalyze(event) {
     event?.preventDefault()
 
+    if (!user) {
+      setError('Google 로그인 후 이용해 주세요.')
+      return
+    }
+
     if (!validateForm()) {
       setError('이름, 생년월일, 성별은 꼭 입력해 주세요.')
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -270,7 +298,7 @@ function App() {
 
   /** Update: 입력 정보만 기존 행에 저장 (결과 텍스트는 유지) */
   async function handleSaveInfo() {
-    if (!selectedId) return
+    if (!user || !selectedId) return
     if (!validateForm()) {
       setError('이름, 생년월일, 성별은 꼭 입력해 주세요.')
       return
@@ -307,7 +335,7 @@ function App() {
 
   /** Delete */
   async function handleDelete(readingId, readingName) {
-    if (!readingId) return
+    if (!user || !readingId) return
     const ok = window.confirm(
       `"${readingName || '이 사주'}" 저장본을 삭제할까요? 삭제하면 되돌릴 수 없습니다.`,
     )
@@ -366,9 +394,57 @@ function App() {
     .filter(Boolean)
     .join(' · ')
 
+  if (authLoading) {
+    return (
+      <div className="auth-screen">
+        <p className="brand">saju-me</p>
+        <p className="auth-lede">로그인 상태 확인 중…</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="auth-screen">
+        <p className="brand">saju-me</p>
+        <h1>사주 기록 시작하기</h1>
+        <p className="auth-lede">Google 계정으로 로그인하면 내 사주를 저장하고 다시 볼 수 있어요.</p>
+        <button
+          type="button"
+          className="google-login-btn"
+          disabled={authBusy}
+          onClick={() => void signInWithGoogle()}
+        >
+          {authBusy ? 'Google로 이동 중…' : 'Google로 계속하기'}
+        </button>
+        {(authError || error) && <p className="error">{authError || error}</p>}
+      </div>
+    )
+  }
+
   return (
     <div className="layout">
       <aside className="sidebar" aria-label="저장된 사주 목록">
+        <div className="sidebar-user">
+          <div className="sidebar-user-profile">
+            {avatarUrl ? (
+              <img className="sidebar-avatar" src={avatarUrl} alt="" referrerPolicy="no-referrer" />
+            ) : (
+              <span className="sidebar-avatar sidebar-avatar-fallback" aria-hidden="true">
+                {displayName.slice(0, 1)}
+              </span>
+            )}
+            <p className="sidebar-user-name">{displayName}</p>
+          </div>
+          <button
+            type="button"
+            className="sidebar-logout"
+            disabled={authBusy}
+            onClick={() => void signOut()}
+          >
+            {authBusy ? '처리 중…' : '로그아웃'}
+          </button>
+        </div>
         <p className="sidebar-title">
           저장된 사주
           {!listLoading && !listError ? (
