@@ -4,6 +4,9 @@ import './App.css'
 import { analyzeSaju } from './gemini'
 import { supabase } from './supabase'
 
+const READING_SELECT =
+  'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, updated_at'
+
 /** 단일 줄바꿈을 마크다운 강제 줄바꿈으로 바꿔 원국·문단이 예쁘게 보이게 함 */
 function formatResultMarkdown(text) {
   return String(text)
@@ -39,11 +42,15 @@ function App() {
   const [calendarType, setCalendarType] = useState('solar')
 
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const [listLoading, setListLoading] = useState(true)
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [copied, setCopied] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
 
   const [readings, setReadings] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -56,6 +63,7 @@ function App() {
   const shouldScrollToResultRef = useRef(false)
 
   const isViewingSaved = Boolean(selectedId)
+  const busy = loading || saving || Boolean(deletingId)
 
   useEffect(() => {
     void loadReadings()
@@ -70,11 +78,22 @@ function App() {
     resultRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [selectedId, result])
 
+  function readingPayload(extra = {}) {
+    return {
+      name: name.trim(),
+      birth_date: birthDate,
+      birth_time: timeUnknown || !birthTime ? null : birthTime,
+      gender,
+      calendar_type: calendarType,
+      ...extra,
+    }
+  }
+
   async function loadReadings() {
     setListLoading(true)
     const { data, error: fetchError } = await supabase
       .from('saju_readings')
-      .select('id, name, birth_date, birth_time, gender, calendar_type, result, created_at')
+      .select(READING_SELECT)
       .order('created_at', { ascending: false })
 
     if (fetchError) {
@@ -89,46 +108,43 @@ function App() {
     setListLoading(false)
   }
 
-  /** 저장본을 보다가 입력을 바꾸면 옛 결과와 섞이지 않게 초기화 */
-  function beginEditingFromSaved() {
-    if (!selectedId) return
-    setSelectedId(null)
-    setResult('')
-    setError('')
+  function markDirty() {
+    setIsDirty(true)
+    setNotice('')
   }
 
   function updateName(value) {
-    beginEditingFromSaved()
+    markDirty()
     setName(value)
     if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: false }))
   }
 
   function updateBirthDate(value) {
-    beginEditingFromSaved()
+    markDirty()
     setBirthDate(value)
     if (fieldErrors.birthDate) setFieldErrors((prev) => ({ ...prev, birthDate: false }))
   }
 
   function updateBirthTime(value) {
-    beginEditingFromSaved()
+    markDirty()
     setTimeUnknown(false)
     setBirthTime(value)
   }
 
   function updateTimeUnknown(checked) {
-    beginEditingFromSaved()
+    markDirty()
     setTimeUnknown(checked)
     if (checked) setBirthTime('')
   }
 
   function updateGender(value) {
-    beginEditingFromSaved()
+    markDirty()
     setGender(value)
     if (fieldErrors.gender) setFieldErrors((prev) => ({ ...prev, gender: false }))
   }
 
   function updateCalendarType(value) {
-    beginEditingFromSaved()
+    markDirty()
     setCalendarType(value)
   }
 
@@ -144,8 +160,10 @@ function App() {
     setCalendarType(reading.calendar_type ?? 'solar')
     setResult(reading.result ?? '')
     setError('')
+    setNotice('')
     setFieldErrors({})
     setCopied(false)
+    setIsDirty(false)
   }
 
   function startNewReading() {
@@ -158,8 +176,10 @@ function App() {
     setCalendarType('solar')
     setResult('')
     setError('')
+    setNotice('')
     setFieldErrors({})
     setCopied(false)
+    setIsDirty(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
     requestAnimationFrame(() => nameInputRef.current?.focus())
   }
@@ -174,6 +194,7 @@ function App() {
     return !next.name && !next.birthDate && !next.gender
   }
 
+  /** Create / Update: 사주 풀이 후 새 저장 또는 기존 행 갱신 */
   async function handleAnalyze(event) {
     event?.preventDefault()
 
@@ -183,10 +204,11 @@ function App() {
       return
     }
 
+    const editingId = selectedId
     setLoading(true)
     setError('')
+    setNotice('')
     setResult('')
-    setSelectedId(null)
     setCopied(false)
 
     try {
@@ -200,32 +222,125 @@ function App() {
       shouldScrollToResultRef.current = true
       setResult(text)
 
-      const { data, error: saveError } = await supabase
-        .from('saju_readings')
-        .insert({
-          name: name.trim(),
-          birth_date: birthDate,
-          birth_time: timeUnknown || !birthTime ? null : birthTime,
-          gender,
-          calendar_type: calendarType,
-          result: text,
-        })
-        .select('id, name, birth_date, birth_time, gender, calendar_type, result, created_at')
-        .single()
+      const payload = readingPayload({ result: text })
 
-      if (saveError) {
-        console.error(saveError)
-        setError('사주 해석은 됐지만 저장에 실패했습니다.')
-        return
+      if (editingId) {
+        const { data, error: updateError } = await supabase
+          .from('saju_readings')
+          .update(payload)
+          .eq('id', editingId)
+          .select(READING_SELECT)
+          .single()
+
+        if (updateError) {
+          console.error(updateError)
+          setError('사주 해석은 됐지만 수정 저장에 실패했습니다.')
+          return
+        }
+
+        setReadings((prev) => prev.map((item) => (item.id === data.id ? data : item)))
+        setSelectedId(data.id)
+        setIsDirty(false)
+        setNotice('저장본을 다시 풀어서 수정했습니다.')
+      } else {
+        const { data, error: saveError } = await supabase
+          .from('saju_readings')
+          .insert(payload)
+          .select(READING_SELECT)
+          .single()
+
+        if (saveError) {
+          console.error(saveError)
+          setError('사주 해석은 됐지만 저장에 실패했습니다.')
+          return
+        }
+
+        setReadings((prev) => [data, ...prev])
+        setSelectedId(data.id)
+        setIsDirty(false)
+        setNotice('새 사주를 저장했습니다.')
       }
-
-      setReadings((prev) => [data, ...prev])
-      setSelectedId(data.id)
     } catch (err) {
       console.error(err)
       setError(err.message || '사주 해석 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  /** Update: 입력 정보만 기존 행에 저장 (결과 텍스트는 유지) */
+  async function handleSaveInfo() {
+    if (!selectedId) return
+    if (!validateForm()) {
+      setError('이름, 생년월일, 성별은 꼭 입력해 주세요.')
+      return
+    }
+
+    setSaving(true)
+    setError('')
+    setNotice('')
+
+    try {
+      const { data, error: updateError } = await supabase
+        .from('saju_readings')
+        .update(readingPayload())
+        .eq('id', selectedId)
+        .select(READING_SELECT)
+        .single()
+
+      if (updateError) {
+        console.error(updateError)
+        setError('정보 수정에 실패했습니다.')
+        return
+      }
+
+      setReadings((prev) => prev.map((item) => (item.id === data.id ? data : item)))
+      setIsDirty(false)
+      setNotice('입력 정보를 수정 저장했습니다.')
+    } catch (err) {
+      console.error(err)
+      setError(err.message || '정보 수정 중 오류가 발생했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Delete */
+  async function handleDelete(readingId, readingName) {
+    if (!readingId) return
+    const ok = window.confirm(
+      `"${readingName || '이 사주'}" 저장본을 삭제할까요? 삭제하면 되돌릴 수 없습니다.`,
+    )
+    if (!ok) return
+
+    setDeletingId(readingId)
+    setError('')
+    setNotice('')
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('saju_readings')
+        .delete()
+        .eq('id', readingId)
+
+      if (deleteError) {
+        console.error(deleteError)
+        setError('삭제에 실패했습니다.')
+        return
+      }
+
+      setReadings((prev) => prev.filter((item) => item.id !== readingId))
+      if (selectedId === readingId) {
+        startNewReading()
+        setNotice('저장본을 삭제했습니다.')
+      } else {
+        setNotice('저장본을 삭제했습니다.')
+      }
+    } catch (err) {
+      console.error(err)
+      setError(err.message || '삭제 중 오류가 발생했습니다.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -270,7 +385,7 @@ function App() {
         )}
         <ul className="sidebar-list">
           {readings.map((reading) => (
-            <li key={reading.id}>
+            <li key={reading.id} className="sidebar-row">
               <button
                 type="button"
                 className={
@@ -285,6 +400,18 @@ function App() {
                   {formatBirthDate(reading.birth_date)}
                 </span>
               </button>
+              <button
+                type="button"
+                className="sidebar-delete"
+                disabled={busy}
+                aria-label={`${reading.name} 삭제`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void handleDelete(reading.id, reading.name)
+                }}
+              >
+                {deletingId === reading.id ? '…' : '삭제'}
+              </button>
             </li>
           ))}
         </ul>
@@ -295,18 +422,37 @@ function App() {
         <h1>{isViewingSaved ? '저장된 사주' : '사주 입력'}</h1>
         <p className="lede">
           {isViewingSaved
-            ? '저장된 결과를 보고 있어요. 새로 보려면 새 사주 만들기를 눌러 주세요.'
+            ? '저장본을 수정·다시 풀기·삭제할 수 있어요.'
             : '사주 계산에 필요한 기본 정보를 입력해 주세요.'}
         </p>
 
         {isViewingSaved && (
           <div className="mode-banner" role="status">
             <p>
-              <strong>{name}</strong>님 저장본을 보는 중
+              <strong>{name}</strong>님 저장본
+              {isDirty ? ' · 수정 중' : ' 보는 중'}
             </p>
-            <button type="button" className="mode-banner-btn" onClick={startNewReading}>
-              새 사주 만들기
-            </button>
+            <div className="mode-banner-actions">
+              <button
+                type="button"
+                className="mode-banner-btn"
+                disabled={busy || !isDirty}
+                onClick={() => void handleSaveInfo()}
+              >
+                {saving ? '저장 중…' : '정보 저장'}
+              </button>
+              <button
+                type="button"
+                className="mode-banner-btn mode-banner-btn-danger"
+                disabled={busy}
+                onClick={() => void handleDelete(selectedId, name)}
+              >
+                삭제
+              </button>
+              <button type="button" className="mode-banner-btn" onClick={startNewReading}>
+                새 사주
+              </button>
+            </div>
           </div>
         )}
 
@@ -315,7 +461,7 @@ function App() {
           className={isViewingSaved ? 'form-block form-block-viewing' : 'form-block'}
           onSubmit={handleAnalyze}
         >
-          <fieldset disabled={loading}>
+          <fieldset disabled={busy}>
             <div className={fieldErrors.name ? 'field field-error' : 'field'}>
               <label htmlFor="name">이름</label>
               <input
@@ -419,7 +565,7 @@ function App() {
               </div>
             </div>
 
-            <button type="submit" className="analyze-btn" disabled={loading}>
+            <button type="submit" className="analyze-btn" disabled={busy}>
               {loading ? (
                 <span className="loading-label">
                   <span className="walker" aria-hidden="true">
@@ -428,7 +574,7 @@ function App() {
                   풀이중...
                 </span>
               ) : isViewingSaved ? (
-                '이 정보로 다시 풀기'
+                '다시 풀어서 수정'
               ) : (
                 '사주 보기'
               )}
@@ -437,6 +583,7 @@ function App() {
         </form>
 
         {error && <p className="error">{error}</p>}
+        {notice && !error && <p className="notice">{notice}</p>}
 
         {result && (
           <div
@@ -452,6 +599,16 @@ function App() {
               <button type="button" className="result-action" onClick={handleCopyResult}>
                 {copied ? '복사됨' : '결과 복사'}
               </button>
+              {isViewingSaved && (
+                <button
+                  type="button"
+                  className="result-action result-action-danger"
+                  disabled={busy}
+                  onClick={() => void handleDelete(selectedId, name)}
+                >
+                  삭제
+                </button>
+              )}
               <button type="button" className="result-action" onClick={startNewReading}>
                 새 사주 만들기
               </button>
