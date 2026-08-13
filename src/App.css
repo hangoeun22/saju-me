@@ -636,6 +636,29 @@
   animation-delay: 0.14s;
 }
 
+.lede-with-stat {
+  margin-bottom: 0.55rem;
+}
+
+.trust-stat {
+  margin: 0 auto 2.15rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  animation: var(--reveal);
+  animation-delay: 0.2s;
+}
+
+.trust-stat em {
+  color: var(--ink-soft);
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
 .mode-banner {
   display: flex;
   align-items: center;
@@ -1573,6 +1596,7 @@
   .brand,
   .app h1,
   .lede,
+  .trust-stat,
   .form-block,
   .mode-banner,
   .error,

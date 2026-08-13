@@ -128,6 +128,7 @@ function App() {
   const [readings, setReadings] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [listError, setListError] = useState('')
+  const [readingCount, setReadingCount] = useState(null)
 
   const resultRef = useRef(null)
   const nameInputRef = useRef(null)
@@ -158,6 +159,10 @@ function App() {
       if (toastShowTimerRef.current) clearTimeout(toastShowTimerRef.current)
       if (toastHideTimerRef.current) clearTimeout(toastHideTimerRef.current)
     }
+  }, [])
+
+  useEffect(() => {
+    void loadReadingCount()
   }, [])
 
   useEffect(() => {
@@ -280,6 +285,7 @@ function App() {
     setIsDirty(false)
     setNotice('전체 해석이 열렸어요. 이 사주를 저장해 두었습니다.')
     clearGuestDraft()
+    bumpReadingCount(1)
   }
 
   async function bootstrapUser() {
@@ -360,6 +366,23 @@ function App() {
     } else if (draft) {
       clearGuestDraft()
     }
+  }
+
+  async function loadReadingCount() {
+    const { data, error: countError } = await supabase.rpc('saju_reading_count')
+    if (countError) {
+      console.error(countError)
+      return
+    }
+    const next = Number(data)
+    if (Number.isFinite(next) && next >= 0) setReadingCount(next)
+  }
+
+  function bumpReadingCount(delta) {
+    setReadingCount((prev) => {
+      if (typeof prev !== 'number') return prev
+      return Math.max(0, prev + delta)
+    })
   }
 
   async function loadReadings() {
@@ -639,6 +662,7 @@ function App() {
         setSelectedId(data.id)
         setIsDirty(false)
         setNotice('새 사주를 저장했습니다.')
+        bumpReadingCount(1)
       }
     } catch (err) {
       console.error(err)
@@ -712,6 +736,7 @@ function App() {
         startNewReading()
       }
       setNotice('저장본을 삭제했습니다.')
+      bumpReadingCount(-1)
     } catch (err) {
       console.error(err)
       setError(err.message || '삭제 중 오류가 발생했습니다.')
@@ -771,6 +796,7 @@ function App() {
 
   const gatedResult = isGuest && Boolean(result)
   const gatedParts = gatedResult ? splitGatedResult(result) : { preview: result, teaser: '' }
+  const showTrustStat = isGuest && !result && !loading && readingCount > 0
 
   if (authLoading || (user && profileLoading)) {
     return (
@@ -895,7 +921,7 @@ function App() {
           <Mascot caption="사주 같이 볼까?" className="mascot-welcome" />
         )}
         <h1>{isViewingSaved ? '저장된 사주' : '내 사주 보기'}</h1>
-        <p className="lede">
+        <p className={showTrustStat ? 'lede lede-with-stat' : 'lede'}>
           {isViewingSaved
             ? '과거 결과 스냅샷을 보고 있어요. 프로필과 별도로 저장된 기록입니다.'
             : isGuest
@@ -904,6 +930,11 @@ function App() {
                 ? '프로필 정보가 자동으로 채워져 있어요. 바로 사주를 볼 수 있습니다.'
                 : '먼저 프로필을 등록해 주세요.'}
         </p>
+        {showTrustStat && (
+          <p className="trust-stat">
+            총 <em>{readingCount.toLocaleString('ko-KR')}</em>개의 사주가 생성되었습니다
+          </p>
+        )}
         {isGuest && authError && <p className="error">{authError}</p>}
 
         {profileReady && !isViewingSaved && (
