@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/((?!google622ec1f69a823e01\\.html|robots\\.txt|sitemap\\.xml).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
