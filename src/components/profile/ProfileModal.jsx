@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import BirthInfoFields from '../common/BirthInfoFields'
+import { trackEvent } from '../../lib/analytics'
 
 const emptyErrors = {
   name: false,
@@ -23,6 +24,11 @@ export default function ProfileModal({
   const [calendarType, setCalendarType] = useState('solar')
   const [fieldErrors, setFieldErrors] = useState(emptyErrors)
   const [localError, setLocalError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    trackEvent('profile_modal_view', { required, first_setup: required })
+  }, [open, required])
 
   useEffect(() => {
     if (!open) return
@@ -53,6 +59,12 @@ export default function ProfileModal({
     event.preventDefault()
     if (!validate()) {
       setLocalError('이름, 생년월일, 성별은 꼭 입력해 주세요.')
+      trackEvent('form_error', {
+        form_id: 'profile_modal',
+        missing_name: !name.trim(),
+        missing_birth_date: !birthDate,
+        missing_gender: !gender,
+      })
       return
     }
     setLocalError('')

@@ -10,6 +10,7 @@ export default function SajuForm({
   loading,
   isViewingSaved,
   onSubmit,
+  onFormStart,
   onNameChange,
   onBirthDateChange,
   onBirthTimeChange,
@@ -22,6 +23,7 @@ export default function SajuForm({
       ref={formRef}
       className={isViewingSaved ? 'form-block form-block-viewing' : 'form-block'}
       onSubmit={onSubmit}
+      onFocus={onFormStart}
     >
       <fieldset disabled={disabled}>
         <BirthInfoFields

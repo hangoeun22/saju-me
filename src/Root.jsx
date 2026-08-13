@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import App from './App.jsx'
 import { trackPageView } from './lib/analytics'
 import ResultPage from './pages/ResultPage.jsx'
 
 export default function Root() {
   const [path, setPath] = useState(() => window.location.pathname)
-  const isFirstPath = useRef(true)
 
   useEffect(() => {
     const onPopState = () => setPath(window.location.pathname)
@@ -14,10 +13,6 @@ export default function Root() {
   }, [])
 
   useEffect(() => {
-    if (isFirstPath.current) {
-      isFirstPath.current = false
-      return
-    }
     trackPageView(path)
   }, [path])
 

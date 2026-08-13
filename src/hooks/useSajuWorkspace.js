@@ -18,7 +18,13 @@ import {
   updateReading,
   upsertProfile,
 } from '../lib/readingsApi'
-import { trackEvent } from '../lib/analytics'
+import {
+  classifyAnalyzeError,
+  setUserProperties,
+  trackEvent,
+  trackException,
+  trackLoginClick,
+} from '../lib/analytics'
 import { useAuth } from './useAuth'
 import { useTimedFlag } from './useTimedFlag'
 import { useToast } from './useToast'
@@ -61,6 +67,7 @@ export function useSajuWorkspace() {
   const nameInputRef = useRef(null)
   const formRef = useRef(null)
   const shouldScrollToResultRef = useRef(false)
+  const formStartedRef = useRef(false)
 
   const isGuest = !user
   const isViewingSaved = Boolean(selectedId)
@@ -90,12 +97,14 @@ export function useSajuWorkspace() {
       setListError('')
       setListLoading(false)
       setProfileLoading(false)
+      setUserProperties({ user_type: 'guest', has_profile: false })
 
       const draft = readGuestDraft()
       if (draft) {
         applyDraftToForm(draft)
         setResult(draft.result ?? '')
         if (draft.result) shouldScrollToResultRef.current = true
+        trackEvent('guest_draft_restore', { has_result: Boolean(draft.result) })
       } else {
         resetGuestForm()
       }
@@ -161,8 +170,17 @@ export function useSajuWorkspace() {
     })
   }
 
+  function handleFormStart() {
+    if (formStartedRef.current) return
+    formStartedRef.current = true
+    trackEvent('form_start', {
+      form_id: 'saju_form',
+      user_type: isGuest ? 'guest' : 'member',
+    })
+  }
+
   function handleGuestSignIn(location = 'unknown') {
-    trackEvent('login_click', { method: 'google', login_location: location })
+    trackLoginClick(location)
     persistGuestDraft()
     void signInWithGoogle()
   }
@@ -184,6 +202,8 @@ export function useSajuWorkspace() {
     if (saveError) {
       console.error(saveError)
       setError('전체 해석은 열렸지만 저장에 실패했습니다.')
+      trackEvent('reading_save_fail', { source: 'guest_draft' })
+      trackException('reading_save_fail', false)
       clearGuestDraft()
       return
     }
@@ -215,6 +235,7 @@ export function useSajuWorkspace() {
     if (profileError) {
       console.error(profileError)
       setError('프로필을 불러오지 못했습니다.')
+      trackException('profile_load_fail', false)
       setProfileLoading(false)
       return
     }
@@ -234,6 +255,7 @@ export function useSajuWorkspace() {
         setShowProfileModal(true)
         setProfileLoading(false)
         setReadings([])
+        trackEvent('profile_save_fail', { first_setup: true, source: 'guest_draft' })
         return
       }
 
@@ -246,12 +268,14 @@ export function useSajuWorkspace() {
       setShowProfileModal(true)
       setProfileLoading(false)
       setReadings([])
+      setUserProperties({ user_type: 'member', has_profile: false })
       return
     }
 
     setProfile(nextProfile)
     setProfileRequired(false)
     setShowProfileModal(false)
+    setUserProperties({ user_type: 'member', has_profile: true })
     if (!draft) {
       applyProfileToForm(nextProfile)
     }
@@ -290,6 +314,7 @@ export function useSajuWorkspace() {
     if (fetchError) {
       console.error(fetchError)
       setListError('저장된 사주 목록을 불러오지 못했습니다.')
+      trackException('readings_load_fail', false)
       setListLoading(false)
       return
     }
@@ -352,6 +377,7 @@ export function useSajuWorkspace() {
   }
 
   function applyReading(reading) {
+    trackEvent('select_content', { content_type: 'saved_reading' })
     trackEvent('select_reading')
     shouldScrollToResultRef.current = true
     setSelectedId(reading.id)
@@ -371,9 +397,10 @@ export function useSajuWorkspace() {
     setIsDirty(false)
   }
 
-  function startNewReading() {
-    trackEvent('new_reading')
+  function startNewReading(location = 'unknown') {
     const alreadyOnNewPage = !selectedId && !result
+    trackEvent('new_reading', { location, already_open: alreadyOnNewPage })
+    formStartedRef.current = false
 
     if (alreadyOnNewPage) {
       showToast('이미 새 사주 화면이 열려 있어요.')
@@ -403,14 +430,15 @@ export function useSajuWorkspace() {
     requestAnimationFrame(() => nameInputRef.current?.focus())
   }
 
-  function openProfileEditor() {
-    trackEvent('profile_edit_click')
+  function openProfileEditor(location = 'unknown') {
+    trackEvent('profile_edit_click', { location })
     setProfileRequired(false)
     setShowProfileModal(true)
   }
 
   function closeProfileModal() {
     if (profileRequired) return
+    trackEvent('profile_modal_close')
     setShowProfileModal(false)
   }
 
@@ -427,6 +455,7 @@ export function useSajuWorkspace() {
     if (saveError) {
       console.error(saveError)
       setError('프로필 저장에 실패했습니다.')
+      trackEvent('profile_save_fail', { first_setup: !profile })
       return
     }
 
@@ -434,7 +463,11 @@ export function useSajuWorkspace() {
     setProfile(data)
     setProfileRequired(false)
     setShowProfileModal(false)
+    setUserProperties({ user_type: 'member', has_profile: true })
     trackEvent('profile_save', { first_setup: wasFirstSetup })
+    if (wasFirstSetup) {
+      trackEvent('sign_up', { method: 'google' })
+    }
 
     if (!selectedId) {
       applyProfileToForm(data)
@@ -468,6 +501,12 @@ export function useSajuWorkspace() {
 
     if (!validateForm()) {
       setError('이름, 생년월일, 성별은 꼭 입력해 주세요.')
+      trackEvent('form_error', {
+        form_id: 'saju_form',
+        missing_name: !name.trim(),
+        missing_birth_date: !birthDate,
+        missing_gender: !gender,
+      })
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       return
     }
@@ -476,6 +515,7 @@ export function useSajuWorkspace() {
       setProfileRequired(true)
       setShowProfileModal(true)
       setError('먼저 프로필을 등록해 주세요.')
+      trackEvent('analyze_blocked', { reason: 'profile_required' })
       return
     }
 
@@ -486,6 +526,13 @@ export function useSajuWorkspace() {
     setResult('')
     resetCopied()
     resetLinkCopied()
+    trackEvent('analyze_start', {
+      user_type: user ? 'member' : 'guest',
+      is_rerun: Boolean(editingId),
+      calendar_type: calendarType,
+      time_known: !timeUnknown && Boolean(birthTime),
+    })
+    const startedAt = Date.now()
 
     try {
       const text = await analyzeSaju({
@@ -502,6 +549,8 @@ export function useSajuWorkspace() {
         is_rerun: Boolean(editingId),
         calendar_type: calendarType,
         time_known: !timeUnknown && Boolean(birthTime),
+        gated: !user,
+        duration_ms: Date.now() - startedAt,
       })
 
       if (!user) {
@@ -517,6 +566,7 @@ export function useSajuWorkspace() {
         if (updateError) {
           console.error(updateError)
           setError('사주 해석은 됐지만 수정 저장에 실패했습니다.')
+          trackEvent('reading_save_fail', { source: 'rerun' })
           return
         }
 
@@ -531,6 +581,7 @@ export function useSajuWorkspace() {
         if (saveError) {
           console.error(saveError)
           setError('사주 해석은 됐지만 저장에 실패했습니다.')
+          trackEvent('reading_save_fail', { source: 'new' })
           return
         }
 
@@ -543,7 +594,14 @@ export function useSajuWorkspace() {
       }
     } catch (err) {
       console.error(err)
-      trackEvent('analyze_fail')
+      const reason = classifyAnalyzeError(err)
+      trackEvent('analyze_fail', {
+        user_type: user ? 'member' : 'guest',
+        is_rerun: Boolean(editingId),
+        reason,
+        duration_ms: Date.now() - startedAt,
+      })
+      trackException(`analyze_fail:${reason}`, false)
       setError(err.message || '사주 해석 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
@@ -554,6 +612,12 @@ export function useSajuWorkspace() {
     if (!user || !selectedId) return
     if (!validateForm()) {
       setError('이름, 생년월일, 성별은 꼭 입력해 주세요.')
+      trackEvent('form_error', {
+        form_id: 'save_info',
+        missing_name: !name.trim(),
+        missing_birth_date: !birthDate,
+        missing_gender: !gender,
+      })
       return
     }
 
@@ -567,6 +631,7 @@ export function useSajuWorkspace() {
       if (updateError) {
         console.error(updateError)
         setError('정보 수정에 실패했습니다.')
+        trackEvent('save_info_fail')
         return
       }
 
@@ -576,18 +641,22 @@ export function useSajuWorkspace() {
       trackEvent('save_info')
     } catch (err) {
       console.error(err)
+      trackEvent('save_info_fail')
       setError(err.message || '정보 수정 중 오류가 발생했습니다.')
     } finally {
       setSaving(false)
     }
   }
 
-  async function handleDelete(readingId, readingName) {
+  async function handleDelete(readingId, readingName, location = 'unknown') {
     if (!user || !readingId) return
     const ok = window.confirm(
       `"${readingName || '이 사주'}" 저장본을 삭제할까요? 삭제하면 되돌릴 수 없습니다.`,
     )
-    if (!ok) return
+    if (!ok) {
+      trackEvent('reading_delete_cancel', { location })
+      return
+    }
 
     setDeletingId(readingId)
     setError('')
@@ -599,16 +668,17 @@ export function useSajuWorkspace() {
       if (deleteError) {
         console.error(deleteError)
         setError('삭제에 실패했습니다.')
+        trackEvent('reading_delete_fail', { location })
         return
       }
 
       setReadings((prev) => prev.filter((item) => item.id !== readingId))
       if (selectedId === readingId) {
-        startNewReading()
+        startNewReading('after_delete')
       }
       setNotice('저장본을 삭제했습니다.')
       bumpReadingCount(-1)
-      trackEvent('reading_delete')
+      trackEvent('reading_delete', { location })
     } catch (err) {
       console.error(err)
       setError(err.message || '삭제 중 오류가 발생했습니다.')
@@ -622,9 +692,10 @@ export function useSajuWorkspace() {
     try {
       await navigator.clipboard.writeText(result)
       pulseCopied()
-      trackEvent('reading_copy')
+      trackEvent('reading_copy', { source: 'workspace' })
     } catch (err) {
       console.error(err)
+      trackEvent('reading_copy_fail', { source: 'workspace' })
       setError('결과를 복사하지 못했습니다. 브라우저 권한을 확인해 주세요.')
     }
   }
@@ -633,10 +704,14 @@ export function useSajuWorkspace() {
     if (!selectedId) return
     try {
       const outcome = await shareReadingLink({ id: selectedId, name })
-      if (outcome.cancelled) return
+      if (outcome.cancelled) {
+        trackEvent('share_cancel', { source: 'workspace' })
+        return
+      }
       trackEvent('share', {
         method: outcome.shared ? 'native' : 'copy_link',
         content_type: 'saju_reading',
+        source: 'workspace',
       })
       if (outcome.copied) {
         pulseLinkCopied()
@@ -644,6 +719,7 @@ export function useSajuWorkspace() {
       }
     } catch (err) {
       console.error(err)
+      trackEvent('share_fail', { source: 'workspace' })
       setError('공유에 실패했습니다. 브라우저 권한을 확인해 주세요.')
     }
   }
@@ -759,6 +835,7 @@ export function useSajuWorkspace() {
       handleSaveInfo,
       handleCopyResult,
       handleShareResult,
+      handleFormStart,
       updateName,
       updateBirthDate,
       updateBirthTime,

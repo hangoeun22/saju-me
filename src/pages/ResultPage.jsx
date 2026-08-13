@@ -3,7 +3,7 @@ import AuthScreen from '../components/layout/AuthScreen'
 import ResultCard from '../components/result/ResultCard'
 import ResultMarkdown from '../components/result/ResultMarkdown'
 import { useTimedFlag } from '../hooks/useTimedFlag'
-import { trackEvent } from '../lib/analytics'
+import { trackEvent, trackException } from '../lib/analytics'
 import { UUID_RE, readingMetaText, shareReadingLink } from '../lib/readingShare'
 import { fetchSharedReading } from '../lib/readingsApi'
 
@@ -38,6 +38,7 @@ export default function ResultPage({ readingId }) {
         if (!cancelled) {
           setError('not-found')
           setLoading(false)
+          trackEvent('shared_result_not_found', { reason: 'invalid_id' })
         }
         return
       }
@@ -50,6 +51,8 @@ export default function ResultPage({ readingId }) {
         console.error(fetchError)
         setError('load-failed')
         setLoading(false)
+        trackEvent('shared_result_fail')
+        trackException('shared_result_fail', false)
         return
       }
 
@@ -57,11 +60,17 @@ export default function ResultPage({ readingId }) {
       if (!row) {
         setError('not-found')
         setLoading(false)
+        trackEvent('shared_result_not_found', { reason: 'missing' })
         return
       }
 
       setReading(row)
       setLoading(false)
+      trackEvent('view_item', {
+        item_id: 'shared_saju',
+        item_name: 'shared_saju_result',
+      })
+      trackEvent('shared_result_view')
     }
 
     void load()
@@ -79,6 +88,7 @@ export default function ResultPage({ readingId }) {
     } catch (err) {
       console.error(err)
       setError('copy-failed')
+      trackEvent('reading_copy_fail', { source: 'shared_page' })
     }
   }
 
@@ -88,7 +98,10 @@ export default function ResultPage({ readingId }) {
         id: reading?.id || readingId,
         name: reading?.name,
       })
-      if (outcome.cancelled) return
+      if (outcome.cancelled) {
+        trackEvent('share_cancel', { source: 'shared_page' })
+        return
+      }
       trackEvent('share', {
         method: outcome.shared ? 'native' : 'copy_link',
         content_type: 'saju_reading',
@@ -100,6 +113,7 @@ export default function ResultPage({ readingId }) {
     } catch (err) {
       console.error(err)
       setError('share-failed')
+      trackEvent('share_fail', { source: 'shared_page' })
     }
   }
 
@@ -152,7 +166,11 @@ export default function ResultPage({ readingId }) {
 
   return (
     <div className="result-page">
-      <a className="brand brand-link" href="/">
+      <a
+        className="brand brand-link"
+        href="/"
+        onClick={() => trackEvent('cta_try_saju', { location: 'shared_brand' })}
+      >
         saju-me
       </a>
       <h1>{reading.name ? `${reading.name}님의 사주` : '공유된 사주'}</h1>

@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import ResultGate from './ResultGate'
 import ResultCard from './ResultCard'
 import ResultMarkdown from './ResultMarkdown'
+import { trackEvent } from '../../lib/analytics'
 
 export default function ResultPanel({
   resultRef,
@@ -22,6 +24,14 @@ export default function ResultPanel({
   onNewReading,
   onSignIn,
 }) {
+  useEffect(() => {
+    trackEvent('result_view', {
+      gated,
+      source: isViewingSaved ? 'saved' : 'fresh',
+    })
+    if (gated) trackEvent('result_gate_view')
+  }, [gated, isViewingSaved])
+
   return (
     <ResultCard
       resultRef={resultRef}

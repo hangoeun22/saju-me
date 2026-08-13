@@ -49,11 +49,11 @@ export default function App() {
           listError={readings.listError}
           busy={ui.busy}
           deletingId={readings.deletingId}
-          onOpenProfile={actions.openProfileEditor}
+          onOpenProfile={() => actions.openProfileEditor('sidebar')}
           onSignOut={auth.signOut}
-          onNewReading={actions.startNewReading}
+          onNewReading={() => actions.startNewReading('sidebar')}
           onSelectReading={actions.applyReading}
-          onDeleteReading={actions.handleDelete}
+          onDeleteReading={(id, name) => void actions.handleDelete(id, name, 'sidebar')}
         />
       )}
 
@@ -73,7 +73,7 @@ export default function App() {
           <ProfileChip
             profile={user.profile}
             profileSummary={user.profileSummary}
-            onEdit={actions.openProfileEditor}
+            onEdit={() => actions.openProfileEditor('profile_chip')}
           />
         )}
 
@@ -84,8 +84,8 @@ export default function App() {
             busy={ui.busy}
             saving={ui.saving}
             onSaveInfo={() => void actions.handleSaveInfo()}
-            onDelete={() => void actions.handleDelete(readings.selectedId, form.name)}
-            onNewReading={actions.startNewReading}
+            onDelete={() => void actions.handleDelete(readings.selectedId, form.name, 'mode_banner')}
+            onNewReading={() => actions.startNewReading('mode_banner')}
           />
         )}
 
@@ -106,6 +106,7 @@ export default function App() {
           loading={ui.loading}
           isViewingSaved={form.isViewingSaved}
           onSubmit={actions.handleAnalyze}
+          onFormStart={actions.handleFormStart}
           onNameChange={actions.updateName}
           onBirthDateChange={actions.updateBirthDate}
           onBirthTimeChange={actions.updateBirthTime}
@@ -135,8 +136,8 @@ export default function App() {
             authError={auth.error}
             onShare={() => void actions.handleShareResult()}
             onCopy={actions.handleCopyResult}
-            onDelete={() => void actions.handleDelete(readings.selectedId, form.name)}
-            onNewReading={actions.startNewReading}
+            onDelete={() => void actions.handleDelete(readings.selectedId, form.name, 'result_panel')}
+            onNewReading={() => actions.startNewReading('result_panel')}
             onSignIn={() => actions.handleGuestSignIn('result_gate')}
           />
         )}

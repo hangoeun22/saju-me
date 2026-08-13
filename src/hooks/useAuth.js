@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { setUserType, trackLoginSuccess, trackLogoutSuccess } from '../lib/analytics'
+import {
+  setUserType,
+  trackLoginFail,
+  trackLoginSuccess,
+  trackLogoutClick,
+  trackLogoutSuccess,
+} from '../lib/analytics'
 import { supabase } from '../lib/supabase'
 
 function readOAuthErrorFromUrl() {
@@ -45,6 +51,7 @@ export function useAuth() {
     const oauthError = readOAuthErrorFromUrl()
     if (oauthError) {
       setAuthError(decodeURIComponent(oauthError.replace(/\+/g, ' ')))
+      trackLoginFail('oauth_redirect')
     }
 
     supabase.auth.getSession().then(({ data, error }) => {
@@ -67,17 +74,26 @@ export function useAuth() {
       setSession(nextSession)
       setAuthLoading(false)
       setUserType(!nextSession)
+
+      if (event === 'INITIAL_SESSION') {
+        hadSessionRef.current = Boolean(nextSession)
+        return
+      }
+
       if (event === 'SIGNED_IN' && nextSession) {
+        const wasGuest = !hadSessionRef.current
         hadSessionRef.current = true
-        trackLoginSuccess()
+        if (wasGuest) trackLoginSuccess()
         setAuthError('')
         clearOAuthParamsFromUrl()
         return
       }
+
       if (event === 'SIGNED_OUT') {
         if (hadSessionRef.current) trackLogoutSuccess()
         hadSessionRef.current = false
       }
+
       if (nextSession) {
         setAuthError('')
         clearOAuthParamsFromUrl()
@@ -106,11 +122,13 @@ export function useAuth() {
     if (error) {
       console.error(error)
       setAuthError(error.message || 'Google 로그인에 실패했습니다.')
+      trackLoginFail('oauth_start')
       setAuthBusy(false)
     }
   }
 
   async function signOut() {
+    trackLogoutClick()
     setAuthError('')
     setAuthBusy(true)
     const { error } = await supabase.auth.signOut()
