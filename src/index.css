@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "OngleipParkDahyeon";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/2411-3@1.0/Ownglyph_ParkDaHyun.woff2")
+    format("woff2");
+  font-weight: normal;
+  font-display: swap;
+}
+
 *,
 *::before,
 *::after {
@@ -12,7 +20,7 @@ body {
 
 body {
   color: var(--ink);
-  font-family: "Noto Sans KR", sans-serif;
+  font-family: "OngleipParkDahyeon", sans-serif;
   background:
     radial-gradient(ellipse 90% 55% at 50% -15%, #f3eee8 0%, transparent 55%),
     linear-gradient(165deg, var(--mauve) 0%, var(--lime) 52%, #d7e0cb 100%);
@@ -38,4 +46,5 @@ body {
   --fill: #1a2318;
   --fill-hover: #0f160e;
   --focus: #a1ad95;
+  --font: "OngleipParkDahyeon", sans-serif;
 }
